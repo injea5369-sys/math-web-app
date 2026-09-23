@@ -1,0 +1,12 @@
+{
+  "name": "math-web-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "수능 수학 2·3점 학습 및 OpenAI 풀이 진단 웹앱",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
