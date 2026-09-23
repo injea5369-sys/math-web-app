@@ -195,6 +195,33 @@ function serveStatic(req, res, pathname) {
   });
 }
 
+
+async function selfTestOpenAI() {
+  if (process.env.OPENAI_SELF_TEST !== '1' || !OPENAI_API_KEY) return;
+  try {
+    const response = await fetch('https://api.openai.com/v1/responses', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${OPENAI_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        input: 'Reply with exactly: OK',
+        max_output_tokens: 8
+      })
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      console.error('OpenAI self-test failed:', response.status, result?.error?.code || result?.error?.type || 'unknown');
+      return;
+    }
+    console.log('OpenAI self-test: SUCCESS');
+  } catch (error) {
+    console.error('OpenAI self-test failed:', error?.message || String(error));
+  }
+}
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const pathname = url.pathname;
@@ -225,4 +252,5 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`Math Web App listening on port ${PORT}`);
   console.log(`OpenAI: ${OPENAI_API_KEY ? 'configured' : 'not configured'} / model=${MODEL}`);
+  selfTestOpenAI();
 });
