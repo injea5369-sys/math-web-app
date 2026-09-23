@@ -1,0 +1,35 @@
+'use strict';
+const http=require('http'),fs=require('fs'),path=require('path'),crypto=require('crypto');
+const PORT=Number(process.env.PORT||3000),ROOT=__dirname;
+const OPENAI_API_KEY=process.env.OPENAI_API_KEY||'',MODEL=process.env.OPENAI_MODEL||'gpt-5.6-luna',PASSWORD=process.env.ENGLISH_LAB_PASSWORD||'';
+const MIME={'.html':'text/html; charset=utf-8','.js':'application/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json; charset=utf-8','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp','.svg':'image/svg+xml'};
+function json(res,status,obj){res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(JSON.stringify(obj))}
+function tokenFor(exp){const p=String(exp),sig=crypto.createHmac('sha256',PASSWORD).update(p).digest('base64url');return p+'.'+sig}
+function validToken(t){if(!PASSWORD||!t||!t.includes('.'))return false;const [p,s]=t.split('.'),exp=Number(p);if(!Number.isFinite(exp)||Date.now()>exp)return false;const w=crypto.createHmac('sha256',PASSWORD).update(p).digest('base64url');try{return crypto.timingSafeEqual(Buffer.from(s),Buffer.from(w))}catch{return false}}
+function body(req,max=36*1024*1024){return new Promise((res,rej)=>{let n=0,ch=[];req.on('data',d=>{n+=d.length;if(n>max){rej(new Error('업로드가 너무 큽니다.'));req.destroy();return}ch.push(d)});req.on('end',()=>{try{res(JSON.parse(Buffer.concat(ch).toString('utf8')||'{}'))}catch{rej(new Error('잘못된 요청입니다.'))}});req.on('error',rej)})}
+function outText(r){if(typeof r.output_text==='string'&&r.output_text)return r.output_text;return (r.output||[]).flatMap(x=>x.content||[]).map(x=>x.text||'').join('')}
+function parse(s){s=String(s||'').trim().replace(/^\`\`\`json\s*/i,'').replace(/\`\`\`$/,'').trim();const a=s.indexOf('{'),b=s.lastIndexOf('}');if(a<0||b<a)throw new Error('AI 응답을 구조화하지 못했습니다.');return JSON.parse(s.slice(a,b+1))}
+function auth(req){return validToken((req.headers.authorization||'').replace(/^Bearer\s+/i,''))}
+function prompt(history){return [
+'너는 한국 수능 영어와 평가원 모의평가를 전문적으로 분석하는 교사용 코치다.',
+'사용자는 영어 교사이며, 문항 이미지와 자신의 해석/풀이 메모 또는 필기 사진을 제공한다.',
+'목표는 단순 정답 제공이 아니라 사용자의 독해·해석·문항 접근 능력을 정교하게 교정하고 기록하는 것이다.',
+'분석 원칙:',
+'1. 문제 이미지에서 지문과 선지를 정확히 읽고 문항 유형을 판정한다. 불명확하면 추측하지 말고 표시한다.',
+'2. 사용자의 해석 자료가 있으면 원문과 대조해 실제 오역/구조 오해만 지적한다. 자연스러운 의역은 오류로 취급하지 않는다.',
+'3. 지문 전체의 논리 흐름을 문단/문장 역할 중심으로 압축한다. 단순 직역 나열 금지.',
+'4. 정답 근거가 어디에 있는지, 오답 선지가 왜 매력적으로 보이는지, 어떤 기준으로 제거해야 하는지 설명한다.',
+'5. 문항 유형별로 다음번에 재사용할 수 있는 접근 순서를 제시한다.',
+'6. 어휘는 수능에서 재사용 가치가 큰 표현, 다의어, collocation, paraphrase 중심으로 선별한다. 너무 기초적인 단어를 과도하게 나열하지 않는다.',
+'7. 구문은 사용자가 실제로 오해했거나 수능에서 해석을 가르는 구조를 우선한다.',
+'8. 최근 기록과 비교해 반복 습관을 찾는다. 한 번의 실수를 성급히 습관으로 단정하지 않는다.',
+'9. 사용자가 고른 답이 있으면 결과만 평가하지 말고 그 선택 과정의 질을 평가한다.',
+'10. 답변은 한국어로 하되, 영어 표현/원문은 필요한 만큼 그대로 제시한다.',
+'평가 축은 0~5점: sentence_structure 문장 구조, vocabulary 어휘·표현, reference 지시·대명사, logic 논리 흐름, paraphrase 바꿔쓰기, inference 추론, evidence 근거 찾기, choice_elimination 선지 제거, question_strategy 유형 전략, time_control 시간 운영.',
+'최근 분석 기록: '+JSON.stringify(history||[]),
+'반드시 아래 JSON 구조만 출력:',
+'{"question_type":"목적|심경·분위기|주장|요지|주제|제목|함축 의미|내용 일치/불일치|도표·실용문|어법|어휘|빈칸 추론|무관한 문장|글의 순서|문장 삽입|요약문|장문 독해|듣기|기타","answer":"정답 또는 판단","approach":"이 문항에서 가장 효율적인 접근 순서","passage_flow":"지문 전체 흐름을 3~7단계로","evidence":"정답을 가르는 핵심 근거와 위치","choice_analysis":{"best_reason":"정답 선지의 근거","traps":[{"choice":"오답 선지","reason":"왜 틀렸고 왜 매력적인지"}]},"translation_feedback":[{"source":"문제되는 원문 일부","issue":"사용자 해석의 문제","better_translation":"권장 해석","reason":"구조/어휘/논리 이유"}],"syntax":["중요 구문과 해석 포인트"],"vocabulary":[{"expression":"표현","meaning":"문맥상 뜻","usage":"수능에서의 쓰임/결합","level":"핵심|중요|확장","synonyms":["유의어/바꿔쓰기"]}],"overall_feedback":{"scores":{"sentence_structure":0,"vocabulary":0,"reference":0,"logic":0,"paraphrase":0,"inference":0,"evidence":0,"choice_elimination":0,"question_strategy":0,"time_control":0},"bottleneck":"현재 가장 큰 병목","habits":[{"name":"반복 습관","evidence":"이번/과거 기록 근거","correction":"다음 문제부터 취할 구체 행동"}],"next_action":"다음 문항에서 바로 적용할 행동 1~3개"}}'
+].join('\n')}
+async function analyze(d){const text=prompt(d.history)+'\n\n출처: '+(d.source||'')+'\n사용자 지정 유형: '+(d.type||'')+'\n사용자 선택 답: '+(d.chosen||'')+'\n풀이 시간: '+(d.seconds||0)+'초\n사용자의 전체 흐름/풀이 생각: '+(d.thought||'')+'\n사용자의 텍스트 해석: '+(d.translation||'');const content=[{type:'input_text',text}];for(const x of (d.problemImages||[]).slice(0,6))content.push({type:'input_image',image_url:x,detail:'high'});for(const x of (d.workImages||[]).slice(0,6))content.push({type:'input_image',image_url:x,detail:'high'});const r=await fetch('https://api.openai.com/v1/responses',{method:'POST',headers:{'Authorization':'Bearer '+OPENAI_API_KEY,'Content-Type':'application/json'},body:JSON.stringify({model:MODEL,input:[{role:'user',content}],max_output_tokens:5000})});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j?.error?.message||('OpenAI API 오류 '+r.status));return parse(outText(j))}
+const server=http.createServer(async(req,res)=>{try{const u=new URL(req.url,'http://localhost');if(req.method==='GET'&&u.pathname==='/api/health')return json(res,200,{ok:true,aiConfigured:Boolean(OPENAI_API_KEY),passwordConfigured:Boolean(PASSWORD),model:MODEL});if(req.method==='POST'&&u.pathname==='/api/login'){const b=await body(req,20000);if(!PASSWORD)return json(res,503,{error:'접속 암호가 설정되지 않았습니다.'});if(String(b.password||'')!==PASSWORD)return json(res,401,{error:'암호가 맞지 않습니다.'});return json(res,200,{token:tokenFor(Date.now()+1000*60*60*24*30)})}if(req.method==='POST'&&u.pathname==='/api/analyze'){if(!auth(req))return json(res,401,{error:'인증이 필요합니다.'});if(!OPENAI_API_KEY)return json(res,503,{error:'OpenAI API가 연결되지 않았습니다.'});const d=await body(req);return json(res,200,{analysis:await analyze(d)})}if(req.method!=='GET'&&req.method!=='HEAD')return json(res,405,{error:'Method not allowed'});let rel=u.pathname==='/'?'index.html':decodeURIComponent(u.pathname).replace(/^\/+/, '');rel=path.normalize(rel).replace(/^(\.\.(\/|\\|$))+/, '');const file=path.join(ROOT,rel);if(!file.startsWith(ROOT))return json(res,404,{error:'Not found'});fs.stat(file,(err,st)=>{if(err||!st.isFile())return json(res,404,{error:'Not found'});const ext=path.extname(file).toLowerCase();res.writeHead(200,{'Content-Type':MIME[ext]||'application/octet-stream','Content-Length':st.size,'Cache-Control':ext==='.html'?'no-cache':'public, max-age=300','X-Content-Type-Options':'nosniff','Referrer-Policy':'same-origin','Content-Security-Policy':"default-src 'self'; script-src 'self'; img-src 'self' data: blob:; connect-src 'self'; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"});if(req.method==='HEAD')return res.end();fs.createReadStream(file).pipe(res)})}catch(e){json(res,500,{error:e.message||'서버 오류'})}});
+server.listen(PORT,'0.0.0.0',()=>console.log('English CSAT Lab listening on port '+PORT+'; OpenAI='+(OPENAI_API_KEY?'configured':'not configured')+'; password='+(PASSWORD?'configured':'not configured')+'; model='+MODEL));
