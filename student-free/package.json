@@ -1,0 +1,13 @@
+{
+  "name": "math-web-app-student-free",
+  "version": "1.0.0",
+  "private": true,
+  "description": "추가 과금 없는 학생용 수능 수학 2·3점 학습앱",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "npm@10.9.8"
+}
