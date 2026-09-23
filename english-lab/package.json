@@ -1,0 +1,13 @@
+{
+  "name": "english-csat-lab",
+  "version": "1.0.0",
+  "private": true,
+  "description": "교사용 수능 영어 분석 및 누적 피드백 도구",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "npm@10.9.8"
+}
