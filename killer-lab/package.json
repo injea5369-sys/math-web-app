@@ -1,0 +1,13 @@
+{
+  "name": "math-killer-lab",
+  "version": "1.0.0",
+  "private": true,
+  "description": "수능 수학 3·4점 사고과정 및 킬러 역량 추적 도구",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "npm@10.9.8"
+}
